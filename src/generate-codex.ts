@@ -13,6 +13,10 @@
  *   npx ai-codex --exclude tests dist  # skip these dirs
  *   npx ai-codex --schema prisma/schema.prisma
  *
+ * Monorepo support:
+ *   Run from a pnpm monorepo root — ai-codex auto-detects pnpm-workspace.yaml
+ *   and indexes each workspace package into per-package subdirectories.
+ *
  * Config file (codex.config.json):
  *   {
  *     "output": ".ai-codex",
@@ -24,6 +28,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import YAML from 'yaml';
 
 // ---------------------------------------------------------------------------
 // CLI Argument Parsing
@@ -112,6 +117,11 @@ Options:
 
 Config file:
   Place a codex.config.json in your project root to set defaults.
+
+Monorepo support:
+  If a pnpm-workspace.yaml is detected, ai-codex automatically indexes
+  each workspace package into per-package subdirectories and generates
+  a workspace.md overview with the internal dependency graph.
 `);
 }
 
@@ -206,7 +216,7 @@ interface FrameworkInfo {
   skipDirs: Set<string>;
 }
 
-function detectFramework(config: Config): FrameworkInfo {
+function detectFramework(config: Config, packageRoot: string): FrameworkInfo {
   const info: FrameworkInfo = {
     name: 'generic',
     appDir: null,
@@ -219,16 +229,16 @@ function detectFramework(config: Config): FrameworkInfo {
 
   // Detect Next.js
   const nextConfig = ['next.config.js', 'next.config.mjs', 'next.config.ts']
-    .find((f) => fs.existsSync(path.join(ROOT, f)));
+    .find((f) => fs.existsSync(path.join(packageRoot, f)));
   if (nextConfig) {
     info.name = 'nextjs';
     // app/ directory (App Router)
-    if (fs.existsSync(path.join(ROOT, 'app'))) {
-      info.appDir = path.join(ROOT, 'app');
+    if (fs.existsSync(path.join(packageRoot, 'app'))) {
+      info.appDir = path.join(packageRoot, 'app');
     }
     // pages/ directory (Pages Router)
-    if (fs.existsSync(path.join(ROOT, 'pages'))) {
-      info.appDir = info.appDir || path.join(ROOT, 'pages');
+    if (fs.existsSync(path.join(packageRoot, 'pages'))) {
+      info.appDir = info.appDir || path.join(packageRoot, 'pages');
     }
   }
 
@@ -237,7 +247,7 @@ function detectFramework(config: Config): FrameworkInfo {
     ? [config.schema]
     : ['prisma/schema.prisma', 'schema.prisma', 'prisma/schema/schema.prisma'];
   for (const candidate of schemaCandidates) {
-    const fullPath = path.resolve(ROOT, candidate);
+    const fullPath = path.resolve(packageRoot, candidate);
     if (fs.existsSync(fullPath)) {
       info.hasPrisma = true;
       info.prismaSchemaPath = fullPath;
@@ -248,7 +258,7 @@ function detectFramework(config: Config): FrameworkInfo {
   // Detect lib directories
   const libCandidates = ['lib', 'src/lib', 'utils', 'src/utils', 'src/helpers', 'helpers'];
   for (const dir of libCandidates) {
-    const fullPath = path.join(ROOT, dir);
+    const fullPath = path.join(packageRoot, dir);
     if (fs.existsSync(fullPath)) {
       info.libDirs.push(fullPath);
     }
@@ -257,7 +267,7 @@ function detectFramework(config: Config): FrameworkInfo {
   // Detect component directories
   const compCandidates = ['components', 'src/components', 'app/components'];
   for (const dir of compCandidates) {
-    const fullPath = path.join(ROOT, dir);
+    const fullPath = path.join(packageRoot, dir);
     if (fs.existsSync(fullPath)) {
       info.componentDirs.push(fullPath);
     }
@@ -460,18 +470,18 @@ function generatePages(framework: FrameworkInfo): string | null {
 // 3. lib.md -- Library Exports
 // ---------------------------------------------------------------------------
 
-function generateLib(framework: FrameworkInfo, config: Config): string | null {
+function generateLib(framework: FrameworkInfo, config: Config, packageRoot: string): string | null {
   // Determine which dirs to scan
   let scanDirs = framework.libDirs;
 
   // If user specified --include, scan those instead
   if (config.include.length > 0) {
-    scanDirs = config.include.map((d) => path.resolve(ROOT, d));
+    scanDirs = config.include.map((d) => path.resolve(packageRoot, d));
   }
 
   if (scanDirs.length === 0) {
     // Fallback: scan src/ if it exists
-    const srcDir = path.join(ROOT, 'src');
+    const srcDir = path.join(packageRoot, 'src');
     if (fs.existsSync(srcDir)) {
       scanDirs = [srcDir];
     } else {
@@ -500,7 +510,7 @@ function generateLib(framework: FrameworkInfo, config: Config): string | null {
       const content = readFileSafe(file);
       if (!content) continue;
 
-      const relPath = path.relative(ROOT, file);
+      const relPath = path.relative(packageRoot, file);
       const exports: LibExport[] = [];
 
       const contentLines = content.split('\n');
@@ -791,7 +801,7 @@ function generateSchema(framework: FrameworkInfo): string | null {
 // 5. components.md -- Component Index
 // ---------------------------------------------------------------------------
 
-function generateComponents(framework: FrameworkInfo): string | null {
+function generateComponents(framework: FrameworkInfo, packageRoot: string): string | null {
   const searchDirs = [...framework.componentDirs];
 
   if (searchDirs.length === 0) return null;
@@ -822,7 +832,7 @@ function generateComponents(framework: FrameworkInfo): string | null {
     if (dir.endsWith('/ui') || dir.includes('/ui/')) continue;
 
     const files = walk(dir, ['.tsx', '.jsx'], framework.skipDirs);
-    const relGroup = path.relative(ROOT, dir);
+    const relGroup = path.relative(packageRoot, dir);
 
     const components: ComponentInfo[] = [];
 
@@ -929,26 +939,26 @@ function generateComponents(framework: FrameworkInfo): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Main
+// Run generators for a single package
 // ---------------------------------------------------------------------------
 
-function main() {
-  console.log('\nai-codex -- codebase indexer for AI assistants\n');
+interface PackageResult {
+  framework: string;
+  generatedFiles: string[];
+}
 
-  const config = parseArgs();
-
-  const framework = detectFramework(config);
+function runForPackage(config: Config, packageRoot: string, outputPath: string): PackageResult {
+  const framework = detectFramework(config, packageRoot);
 
   // Merge user excludes into framework skipDirs
   for (const dir of config.exclude) {
     framework.skipDirs.add(dir);
   }
-  console.log(`  Framework:  ${framework.name}`);
-  console.log(`  Output:     ${config.output}/`);
-  if (framework.hasPrisma) console.log(`  Prisma:     ${path.relative(ROOT, framework.prismaSchemaPath!)}`);
-  console.log('');
 
-  const outputDir = path.resolve(ROOT, config.output);
+  console.log(`  Framework:  ${framework.name}`);
+  if (framework.hasPrisma) console.log(`  Prisma:     ${path.relative(packageRoot, framework.prismaSchemaPath!)}`);
+
+  const outputDir = path.resolve(ROOT, outputPath);
   try {
     fs.mkdirSync(outputDir, { recursive: true });
   } catch (err) {
@@ -959,13 +969,13 @@ function main() {
   const generators: [string, () => string | null][] = [
     ['routes.md', () => generateRoutes(framework)],
     ['pages.md', () => generatePages(framework)],
-    ['lib.md', () => generateLib(framework, config)],
+    ['lib.md', () => generateLib(framework, config, packageRoot)],
     ['schema.md', () => generateSchema(framework)],
-    ['components.md', () => generateComponents(framework)],
+    ['components.md', () => generateComponents(framework, packageRoot)],
   ];
 
   let totalLines = 0;
-  let totalFiles = 0;
+  const generatedFiles: string[] = [];
 
   for (const [filename, generator] of generators) {
     const start = Date.now();
@@ -985,7 +995,7 @@ function main() {
 
     const lineCount = content.split('\n').length;
     totalLines += lineCount;
-    totalFiles++;
+    generatedFiles.push(filename.replace('.md', ''));
 
     const outPath = path.join(outputDir, filename);
     try {
@@ -997,7 +1007,254 @@ function main() {
     console.log(`  ${pad(filename, 20)} ${pad(String(lineCount) + ' lines', 14)} (${elapsed}ms)`);
   }
 
-  console.log(`\n  Total: ${totalLines} lines across ${totalFiles} files`);
+  console.log(`  Total: ${totalLines} lines across ${generatedFiles.length} files`);
+
+  return { framework: framework.name, generatedFiles };
+}
+
+// ---------------------------------------------------------------------------
+// Workspace Discovery (pnpm)
+// ---------------------------------------------------------------------------
+
+interface WorkspacePackage {
+  name: string;
+  relPath: string;
+  absPath: string;
+  framework: string;
+  generatedFiles: string[];
+  internalDeps: string[];
+}
+
+function parsePnpmWorkspace(rootDir: string): string[] | null {
+  const wsPath = path.join(rootDir, 'pnpm-workspace.yaml');
+  if (!fs.existsSync(wsPath)) return null;
+
+  try {
+    const content = fs.readFileSync(wsPath, 'utf-8');
+    const parsed = YAML.parse(content);
+    if (parsed && Array.isArray(parsed.packages)) {
+      return parsed.packages as string[];
+    }
+    return null;
+  } catch {
+    console.warn('Warning: could not parse pnpm-workspace.yaml');
+    return null;
+  }
+}
+
+function expandWorkspaceGlobs(rootDir: string, patterns: string[]): string[] {
+  const included: string[] = [];
+  const negations: string[] = [];
+
+  for (const pattern of patterns) {
+    if (pattern.startsWith('!')) {
+      negations.push(pattern.slice(1));
+    } else {
+      included.push(pattern);
+    }
+  }
+
+  const packageDirs: string[] = [];
+
+  for (const pattern of included) {
+    // Handle simple prefix/* patterns (the vast majority of pnpm workspaces)
+    if (pattern.endsWith('/*')) {
+      const prefix = pattern.slice(0, -2);
+      const parentDir = path.join(rootDir, prefix);
+      if (!fs.existsSync(parentDir)) continue;
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(parentDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        if (entry.name.startsWith('.')) continue;
+        const fullPath = path.join(parentDir, entry.name);
+        if (fs.existsSync(path.join(fullPath, 'package.json'))) {
+          packageDirs.push(fullPath);
+        }
+      }
+    } else if (pattern.includes('**')) {
+      // Recursive glob — walk looking for package.json
+      const prefix = pattern.split('**')[0];
+      const parentDir = path.join(rootDir, prefix);
+      if (!fs.existsSync(parentDir)) continue;
+      const candidates = walkForPackageJsons(parentDir);
+      for (const dir of candidates) {
+        packageDirs.push(dir);
+      }
+    } else {
+      // Exact path
+      const fullPath = path.join(rootDir, pattern);
+      if (fs.existsSync(path.join(fullPath, 'package.json'))) {
+        packageDirs.push(fullPath);
+      }
+    }
+  }
+
+  // Apply negation filters
+  if (negations.length > 0) {
+    return packageDirs.filter((dir) => {
+      const rel = path.relative(rootDir, dir);
+      return !negations.some((neg) => {
+        const negClean = neg.replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*');
+        return new RegExp(`^${negClean}$`).test(rel);
+      });
+    });
+  }
+
+  // Sort for deterministic output
+  packageDirs.sort();
+  return packageDirs;
+}
+
+function walkForPackageJsons(dir: string): string[] {
+  const results: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (DEFAULT_SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
+    const full = path.join(dir, entry.name);
+    if (fs.existsSync(path.join(full, 'package.json'))) {
+      results.push(full);
+    } else {
+      for (const sub of walkForPackageJsons(full)) results.push(sub);
+    }
+  }
+  return results;
+}
+
+function readPackageName(dir: string): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'));
+    return pkg.name || path.basename(dir);
+  } catch {
+    return path.basename(dir);
+  }
+}
+
+function resolveInternalDeps(packageDir: string, workspaceNames: Set<string>): string[] {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf-8'));
+    const allDeps = {
+      ...pkg.dependencies,
+      ...pkg.devDependencies,
+    };
+    return Object.keys(allDeps).filter((name) => workspaceNames.has(name));
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// workspace.md -- Monorepo Overview
+// ---------------------------------------------------------------------------
+
+function generateWorkspace(packages: WorkspacePackage[]): string {
+  const lines: string[] = [
+    `# Workspace (generated ${TODAY})`,
+    `# ${packages.length} packages in monorepo.`,
+    '',
+    '## Packages',
+  ];
+
+  for (const pkg of packages) {
+    const files = pkg.generatedFiles.length > 0 ? pkg.generatedFiles.join(',') : '(empty)';
+    lines.push(`${pad(pkg.relPath, 30)} ${pad(pkg.name, 30)} ${pad(pkg.framework, 10)} ${files}`);
+  }
+
+  // Internal dependency graph
+  const depsEntries = packages.filter((p) => p.internalDeps.length > 0);
+  if (depsEntries.length > 0) {
+    lines.push('');
+    lines.push('## Internal Dependencies');
+    for (const pkg of depsEntries) {
+      lines.push(`${pkg.name} -> ${pkg.internalDeps.join(', ')}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+function main() {
+  console.log('\nai-codex -- codebase indexer for AI assistants\n');
+
+  const config = parseArgs();
+  const workspacePatterns = parsePnpmWorkspace(ROOT);
+
+  if (workspacePatterns === null) {
+    // Single-project mode (existing behaviour)
+    console.log(`  Output:     ${config.output}/`);
+    const result = runForPackage(config, ROOT, config.output);
+    console.log(`  Output: ${path.resolve(ROOT, config.output)}/`);
+    console.log('');
+    return;
+  }
+
+  // Monorepo mode
+  console.log('  Monorepo detected (pnpm-workspace.yaml)');
+  console.log(`  Output:     ${config.output}/`);
+  console.log('');
+
+  const packageDirs = expandWorkspaceGlobs(ROOT, workspacePatterns);
+  if (packageDirs.length === 0) {
+    console.log('  No workspace packages found.');
+    return;
+  }
+
+  console.log(`  Found ${packageDirs.length} packages\n`);
+
+  const packages: WorkspacePackage[] = [];
+
+  for (const pkgDir of packageDirs) {
+    const relPath = path.relative(ROOT, pkgDir);
+    const name = readPackageName(pkgDir);
+
+    console.log(`  --- ${name} (${relPath}) ---`);
+    const result = runForPackage(config, pkgDir, path.join(config.output, relPath));
+    packages.push({
+      name,
+      relPath,
+      absPath: pkgDir,
+      framework: result.framework,
+      generatedFiles: result.generatedFiles,
+      internalDeps: [],
+    });
+    console.log('');
+  }
+
+  // Resolve internal dependencies
+  const workspaceNames = new Set(packages.map((p) => p.name));
+  for (const pkg of packages) {
+    pkg.internalDeps = resolveInternalDeps(pkg.absPath, workspaceNames);
+  }
+
+  // Generate workspace overview
+  const wsContent = generateWorkspace(packages);
+  const outputDir = path.resolve(ROOT, config.output);
+  try {
+    fs.mkdirSync(outputDir, { recursive: true });
+  } catch {
+    // already exists
+  }
+  const wsPath = path.join(outputDir, 'workspace.md');
+  fs.writeFileSync(wsPath, wsContent, 'utf-8');
+  const wsLines = wsContent.split('\n').length;
+  console.log(`  ${pad('workspace.md', 20)} ${pad(String(wsLines) + ' lines', 14)}`);
+
+  const totalFiles = packages.reduce((sum, p) => sum + p.generatedFiles.length, 0) + 1;
+  console.log(`\n  Total: ${totalFiles} files across ${packages.length} packages`);
   console.log(`  Output: ${outputDir}/`);
   console.log('');
 }
