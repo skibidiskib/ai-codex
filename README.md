@@ -126,6 +126,53 @@ stripe.ts  fn createPaymentIntent
 (c) SearchBar  onSearch, placeholder
 ```
 
+## Monorepo Support (pnpm)
+
+If you run `ai-codex` from a pnpm monorepo root (where `pnpm-workspace.yaml` exists), it automatically:
+
+1. Discovers all workspace packages
+2. Indexes each package independently
+3. Outputs per-package subdirectories
+4. Generates a `workspace.md` overview with the internal dependency graph
+
+```bash
+# From your monorepo root
+npx ai-codex
+```
+
+Output structure:
+
+```
+.ai-codex/
+  workspace.md              # package list + internal dependency graph
+  apps/web/
+    routes.md
+    pages.md
+    lib.md
+    components.md
+  packages/shared/
+    lib.md
+    schema.md
+```
+
+### workspace.md example
+
+```
+# Workspace (generated 2026-04-02)
+# 3 packages in monorepo.
+
+## Packages
+apps/web                       @acme/web                      nextjs     routes,pages,lib,components
+packages/ui                    @acme/ui                       generic    components,lib
+packages/shared                @acme/shared                   generic    lib,schema
+
+## Internal Dependencies
+@acme/web -> @acme/ui, @acme/shared
+@acme/ui -> @acme/shared
+```
+
+To index a single package instead, just `cd` into it and run `npx ai-codex` from there.
+
 ## Integration with AI Assistants
 
 ### Claude Code
@@ -208,6 +255,7 @@ Prisma schema is auto-detected at `prisma/schema.prisma`.
 
 - Support for more frameworks (SvelteKit, Remix, Astro)
 - Support for more ORMs (Drizzle, TypeORM, Knex)
+- Support for yarn/npm workspaces
 - Watch mode (`--watch`) for continuous regeneration
 - Token count estimation in output
 - Support for Python projects (FastAPI, Django)

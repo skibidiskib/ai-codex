@@ -20,13 +20,16 @@
     "token-savings",
     "developer-tools",
     "nextjs",
-    "typescript"
+    "typescript",
+    "monorepo",
+    "pnpm"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "tsx": "^4.7.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "yaml": "^2.8.3"
   },
   "engines": {
     "node": ">=18"
