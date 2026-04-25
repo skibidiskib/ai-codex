@@ -222,13 +222,23 @@ function detectFramework(config: Config): FrameworkInfo {
     .find((f) => fs.existsSync(path.join(ROOT, f)));
   if (nextConfig) {
     info.name = 'nextjs';
-    // app/ directory (App Router)
-    if (fs.existsSync(path.join(ROOT, 'app'))) {
-      info.appDir = path.join(ROOT, 'app');
+    // App Router: src/app/ takes precedence over app/ (matches Next.js src/ convention)
+    for (const candidate of ['src/app', 'app']) {
+      const fullPath = path.join(ROOT, candidate);
+      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
+        info.appDir = fullPath;
+        break;
+      }
     }
-    // pages/ directory (Pages Router)
-    if (fs.existsSync(path.join(ROOT, 'pages'))) {
-      info.appDir = info.appDir || path.join(ROOT, 'pages');
+    // Pages Router fallback when no App Router is present (src/pages/ before pages/)
+    if (!info.appDir) {
+      for (const candidate of ['src/pages', 'pages']) {
+        const fullPath = path.join(ROOT, candidate);
+        if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
+          info.appDir = fullPath;
+          break;
+        }
+      }
     }
   }
 

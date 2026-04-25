@@ -183,8 +183,8 @@ git add .ai-codex/
 
 | Framework | Auto-detected | What it scans |
 |-----------|:------------:|---------------|
-| **Next.js (App Router)** | Yes | `app/api/**/route.ts`, `app/**/page.tsx`, `lib/`, `components/` |
-| **Next.js (Pages Router)** | Yes | `pages/api/**`, `pages/**`, `lib/`, `components/` |
+| **Next.js (App Router)** | Yes | `app/` or `src/app/` (`api/**/route.ts`, `**/page.tsx`), `lib/`, `components/` |
+| **Next.js (Pages Router)** | Yes | `pages/` or `src/pages/`, `lib/`, `components/` |
 | **Generic TypeScript** | Yes | `src/`, `lib/`, `utils/`, `components/` |
 
 Prisma schema is auto-detected at `prisma/schema.prisma`.
