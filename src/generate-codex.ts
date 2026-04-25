@@ -222,13 +222,31 @@ function detectFramework(config: Config): FrameworkInfo {
     .find((f) => fs.existsSync(path.join(ROOT, f)));
   if (nextConfig) {
     info.name = 'nextjs';
-    // App Router: src/app/ takes precedence over app/ (matches Next.js src/ convention)
-    for (const candidate of ['src/app', 'app']) {
-      const fullPath = path.join(ROOT, candidate);
-      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
-        info.appDir = fullPath;
-        break;
-      }
+    // App Router: prefer the candidate (src/app or app) with more router content.
+    // Tie-break to src/app (Next.js convention). This handles stray empty src/app
+    // leftovers that would otherwise mask a populated root app/.
+    const appCandidates = ['src/app', 'app']
+      .map((c) => path.join(ROOT, c))
+      .filter((p) => fs.existsSync(p) && fs.statSync(p).isDirectory());
+    if (appCandidates.length > 0) {
+      const countRouterFiles = (dir: string): number => {
+        let n = 0;
+        const stack = [dir];
+        while (stack.length > 0 && n < 5) {
+          const d = stack.pop()!;
+          let entries: fs.Dirent[];
+          try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
+          for (const e of entries) {
+            if (n >= 5) break;
+            if (e.isDirectory() && !info.skipDirs.has(e.name)) stack.push(path.join(d, e.name));
+            else if (e.isFile() && /^(route|page)\.(tsx?|jsx?)$/.test(e.name)) n++;
+          }
+        }
+        return n;
+      };
+      const scored = appCandidates.map((p) => ({ p, c: countRouterFiles(p) }));
+      scored.sort((a, b) => b.c - a.c);
+      info.appDir = scored[0].p;
     }
     // Pages Router fallback when no App Router is present (src/pages/ before pages/)
     if (!info.appDir) {
