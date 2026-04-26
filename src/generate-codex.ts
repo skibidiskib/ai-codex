@@ -83,7 +83,7 @@ function parseArgs(): Config {
         break;
       case '--version':
       case '-v':
-        console.log('ai-codex v1.0.0');
+        console.log('ai-codex v1.2.0');
         process.exit(0);
       case '--help':
       case '-h':
@@ -204,14 +204,18 @@ function pad(str: string, len: number): string {
 // Framework Detection
 // ---------------------------------------------------------------------------
 
+interface SchemaSource {
+  kind: 'prisma' | 'drizzle';
+  path: string;
+}
+
 interface FrameworkInfo {
   name: string;
   appDir: string | null;
   routerType: 'app' | 'pages' | null;
   libDirs: string[];
   componentDirs: string[];
-  hasPrisma: boolean;
-  prismaSchemaPath: string | null;
+  schemaSources: SchemaSource[];
   skipDirs: Set<string>;
 }
 
@@ -222,8 +226,7 @@ function detectFramework(config: Config): FrameworkInfo {
     routerType: null,
     libDirs: [],
     componentDirs: [],
-    hasPrisma: false,
-    prismaSchemaPath: null,
+    schemaSources: [],
     skipDirs: new Set(DEFAULT_SKIP_DIRS),
   };
 
@@ -288,16 +291,43 @@ function detectFramework(config: Config): FrameworkInfo {
     }
   }
 
-  // Detect Prisma
-  const schemaCandidates = config.schema
+  // Detect Prisma. If --schema points to a .prisma file, use only that.
+  const prismaCandidates = config.schema && config.schema.endsWith('.prisma')
     ? [config.schema]
+    : config.schema
+    ? []
     : ['prisma/schema.prisma', 'schema.prisma', 'prisma/schema/schema.prisma'];
-  for (const candidate of schemaCandidates) {
+  for (const candidate of prismaCandidates) {
     const fullPath = path.resolve(ROOT, candidate);
-    if (fs.existsSync(fullPath)) {
-      info.hasPrisma = true;
-      info.prismaSchemaPath = fullPath;
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      info.schemaSources.push({ kind: 'prisma', path: fullPath });
       break;
+    }
+  }
+
+  // Detect Drizzle. Looks for `db/schema.ts` or `db/schema/*.ts` patterns under
+  // common project roots. If --schema is a non-prisma file, treat it as drizzle.
+  if (config.schema && !config.schema.endsWith('.prisma')) {
+    const fullPath = path.resolve(ROOT, config.schema);
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      info.schemaSources.push({ kind: 'drizzle', path: fullPath });
+    }
+  } else {
+    const drizzleBases = [
+      'db', 'src/db', 'lib/db', 'src/lib/db',
+      'app/db', 'src/app/db', 'database', 'drizzle',
+    ];
+    for (const base of drizzleBases) {
+      const baseAbs = path.join(ROOT, base);
+      const schemaFile = path.join(baseAbs, 'schema.ts');
+      const schemaDir = path.join(baseAbs, 'schema');
+      if (fs.existsSync(schemaFile) && fs.statSync(schemaFile).isFile()) {
+        info.schemaSources.push({ kind: 'drizzle', path: schemaFile });
+      } else if (fs.existsSync(schemaDir) && fs.statSync(schemaDir).isDirectory()) {
+        for (const f of walk(schemaDir, ['.ts'], info.skipDirs)) {
+          info.schemaSources.push({ kind: 'drizzle', path: f });
+        }
+      }
     }
   }
 
@@ -720,106 +750,160 @@ function generateLib(framework: FrameworkInfo, config: Config): string | null {
 // 4. schema.md -- Database Schema (Prisma)
 // ---------------------------------------------------------------------------
 
-function generateSchema(framework: FrameworkInfo): string | null {
-  if (!framework.hasPrisma || !framework.prismaSchemaPath) return null;
+interface SchemaModelField {
+  name: string;
+  type: string;
+  flags: string[];
+  comment: string;
+}
+interface SchemaModelRelation {
+  fieldName: string;
+  target: string;
+  isArray: boolean;
+}
+interface SchemaModelInfo {
+  name: string;
+  fields: SchemaModelField[];
+  relations: SchemaModelRelation[];
+}
 
-  const content = readFileSafe(framework.prismaSchemaPath);
-  if (!content) return null;
-
-  const SKIP_AUDIT_FIELDS = new Set([
-    'createdAt', 'updatedAt', 'deletedAt', 'isDeleted',
-  ]);
-  const PRISMA_SCALARS = new Set([
-    'String', 'Int', 'Float', 'Boolean', 'DateTime', 'Json', 'BigInt', 'Decimal', 'Bytes',
-  ]);
-
-  interface ModelField {
-    name: string;
-    type: string;
-    flags: string[];
-    comment: string;
-  }
-  interface ModelRelation {
-    fieldName: string;
-    target: string;
-    isArray: boolean;
-  }
-  interface ModelInfo {
-    name: string;
-    fields: ModelField[];
-    relations: ModelRelation[];
-  }
+function parsePrismaSchema(content: string): SchemaModelInfo[] {
+  const SKIP_AUDIT_FIELDS = new Set(['createdAt', 'updatedAt', 'deletedAt', 'isDeleted']);
+  const PRISMA_SCALARS = new Set(['String', 'Int', 'Float', 'Boolean', 'DateTime', 'Json', 'BigInt', 'Decimal', 'Bytes']);
 
   const lines = content.split('\n');
-  const models: ModelInfo[] = [];
-  let currentModel: ModelInfo | null = null;
+  const models: SchemaModelInfo[] = [];
+  let currentModel: SchemaModelInfo | null = null;
   let braceDepth = 0;
 
   for (const line of lines) {
     const trimmed = line.trim();
-
     const modelStart = trimmed.match(/^model\s+(\w+)\s*\{/);
     if (modelStart) {
       currentModel = { name: modelStart[1], fields: [], relations: [] };
       braceDepth = 1;
       continue;
     }
-
     if (!currentModel) continue;
-
     for (const ch of trimmed) {
       if (ch === '{') braceDepth++;
       if (ch === '}') braceDepth--;
     }
-
     if (braceDepth <= 0) {
       models.push(currentModel);
       currentModel = null;
       continue;
     }
-
     if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('@@')) continue;
-
     const fieldMatch = trimmed.match(/^(\w+)\s+([\w\[\]?]+)/);
     if (!fieldMatch) continue;
-
     const fieldName = fieldMatch[1];
     const fieldType = fieldMatch[2];
-
     const isRelation = /\@relation\(/.test(trimmed);
     const isArray = fieldType.endsWith('[]');
     const baseType = fieldType.replace('[]', '').replace('?', '');
-
     if (isRelation || (isArray && /^[A-Z]/.test(baseType))) {
       currentModel.relations.push({ fieldName, target: baseType, isArray });
       continue;
     }
-
     const isPK = /@id\b/.test(trimmed);
     const isUnique = /@unique\b/.test(trimmed);
     const isEnum = /^[A-Z]/.test(baseType) && !PRISMA_SCALARS.has(baseType);
-
     if (SKIP_AUDIT_FIELDS.has(fieldName) && !isPK && !isUnique) continue;
-
     const isKey = isPK || isUnique || isEnum;
     const isFKLike = /Id$|_id$/i.test(fieldName) && fieldName !== 'id';
-
     if (!isKey && !isFKLike) continue;
-
     const flags: string[] = [];
     if (isPK) flags.push('PK');
     if (isUnique) flags.push('UQ');
-
     let comment = '';
     const commentMatch = trimmed.match(/\/\/\s*(.+)/);
     if (commentMatch) comment = commentMatch[1].trim();
-
     currentModel.fields.push({ name: fieldName, type: fieldType.replace('?', ''), flags, comment });
   }
+  return models;
+}
+
+function parseDrizzleSchema(content: string): SchemaModelInfo[] {
+  // Drizzle field types (pg/mysql/sqlite). Conservative list: only these are
+  // accepted as a field "type" to avoid false-matching helper calls.
+  const DRIZZLE_TYPES = new Set([
+    'serial', 'bigserial', 'integer', 'bigint', 'smallint', 'decimal', 'numeric',
+    'real', 'doublePrecision', 'text', 'varchar', 'char', 'boolean', 'timestamp',
+    'date', 'time', 'uuid', 'json', 'jsonb', 'tinyint', 'mediumint', 'mediumtext',
+    'longtext', 'binary', 'blob', 'int', 'float', 'double', 'datetime',
+  ]);
+
+  const models: SchemaModelInfo[] = [];
+  const tableRe = /export\s+const\s+(\w+)\s*=\s*(?:pg|mysql|sqlite)Table\s*\(\s*['"`](\w+)['"`]\s*,\s*\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = tableRe.exec(content)) !== null) {
+    const modelName = match[1];
+    let i = match.index + match[0].length;
+    let depth = 1;
+    while (i < content.length && depth > 0) {
+      const ch = content[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      else if (ch === '"' || ch === "'" || ch === '`') {
+        const q = ch;
+        i++;
+        while (i < content.length && content[i] !== q) {
+          if (content[i] === '\\') i++;
+          i++;
+        }
+      }
+      i++;
+    }
+    const body = content.substring(match.index + match[0].length, i - 1);
+    const fields: SchemaModelField[] = [];
+    const fieldRe = /(?:^|,|\n)\s*(\w+)\s*:\s*(\w+)\s*\(/g;
+    // Collect all field-start positions first so each field's tail can be
+    // bounded to "until the next field" rather than a fixed lookahead window.
+    const starts: { name: string; type: string; index: number; afterCall: number }[] = [];
+    let fm: RegExpExecArray | null;
+    while ((fm = fieldRe.exec(body)) !== null) {
+      starts.push({ name: fm[1], type: fm[2], index: fm.index, afterCall: fieldRe.lastIndex });
+    }
+    for (let s = 0; s < starts.length; s++) {
+      const cur = starts[s];
+      if (!DRIZZLE_TYPES.has(cur.type)) continue;
+      const tailEnd = s + 1 < starts.length ? starts[s + 1].index : body.length;
+      const tail = body.substring(cur.afterCall, tailEnd);
+      const flags: string[] = [];
+      if (/\.primaryKey\s*\(/.test(tail)) flags.push('PK');
+      if (/\.unique\s*\(/.test(tail)) flags.push('UQ');
+      if (/\.references\s*\(/.test(tail)) flags.push('FK');
+      const isFKLike = flags.includes('FK') || /Id$|_id$/i.test(cur.name);
+      const isKey = flags.includes('PK') || flags.includes('UQ');
+      if (!isKey && !isFKLike) continue;
+      fields.push({ name: cur.name, type: cur.type, flags, comment: '' });
+    }
+    if (fields.length > 0) {
+      models.push({ name: modelName, fields, relations: [] });
+    }
+  }
+  return models;
+}
+
+function generateSchema(framework: FrameworkInfo): string | null {
+  if (framework.schemaSources.length === 0) return null;
+
+  const models: SchemaModelInfo[] = [];
+  for (const src of framework.schemaSources) {
+    const content = readFileSafe(src.path);
+    if (!content) continue;
+    if (src.kind === 'prisma') {
+      models.push(...parsePrismaSchema(content));
+    } else if (src.kind === 'drizzle') {
+      models.push(...parseDrizzleSchema(content));
+    }
+  }
+  if (models.length === 0) return null;
 
   const output: string[] = [
     `# Database Schema (generated ${TODAY})`,
-    `# ${models.length} models. PK=primary key, UQ=unique. Only key/FK/enum fields shown.`,
+    `# ${models.length} models. PK=primary key, UQ=unique, FK=foreign key. Only key/FK/enum fields shown.`,
     '',
   ];
 
@@ -1029,7 +1113,10 @@ function main() {
   }
   console.log(`  Framework:  ${framework.name}`);
   console.log(`  Output:     ${config.output}/`);
-  if (framework.hasPrisma) console.log(`  Prisma:     ${path.relative(ROOT, framework.prismaSchemaPath!)}`);
+  for (const src of framework.schemaSources) {
+    const label = src.kind === 'prisma' ? 'Prisma' : 'Drizzle';
+    console.log(`  ${pad(label + ':', 12)}${path.relative(ROOT, src.path)}`);
+  }
   console.log('');
 
   const outputDir = path.resolve(ROOT, config.output);

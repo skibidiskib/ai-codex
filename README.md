@@ -187,7 +187,12 @@ git add .ai-codex/
 | **Next.js (Pages Router)** | Yes | `pages/` or `src/pages/` (`api/**/*.ts`, `**/*.tsx` excl. `_app`/`_document`/`_error`), `lib/`, `components/` |
 | **Generic TypeScript** | Yes | `src/`, `lib/`, `utils/`, `components/` |
 
-Prisma schema is auto-detected at `prisma/schema.prisma`.
+Schema sources are auto-detected from multiple ORMs:
+
+- **Prisma** at `prisma/schema.prisma` (or nested under `prisma/schema/`)
+- **Drizzle** at `db/schema.ts`, `src/db/schema.ts`, `lib/db/schema.ts`, `src/lib/db/schema.ts`, `app/db/schema.ts`, `database/schema.ts`, or `drizzle/schema.ts` — including split-file layouts where `<base>/schema/` is a directory of `.ts` files
+
+Override with `--schema <path>` for either ORM (file extension determines the parser).
 
 ## What Gets Skipped
 
