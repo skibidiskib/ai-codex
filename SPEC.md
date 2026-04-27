@@ -129,7 +129,7 @@ src/
 | T9 | x | create `src/adapters/sveltekit.ts`: `detect` via `svelte.config.js`, route resolution (`+server.ts`, `[param]`, `(group)`), page tree (`+page.svelte`, SSR/CSR, actions), component props (`$props()`, `export let`), runtime detection | V6-V9,V12,V13,V15,V16,C9-C16 |
 | T10 | x | add `wrangler.jsonc`/`wrangler.toml` parser to sveltekit adapter: extract bindings, set `runtime: 'cloudflare-workers'` | V11,V16,C12,C14 |
 | T11 | x | add tests: SvelteKit fixture project, verify routes/pages/lib/components/schema output, verify Next.js unchanged | V5 |
-| T12 | . | update `package.json` `files` array for new structure, update README supported frameworks table | C19,I.cli |
+| T12 | x | update `package.json` `files` array + keywords for new structure (README deferred to main dev) | C19,I.cli |
 
 ## §B — Bugs
 
