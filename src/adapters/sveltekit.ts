@@ -237,19 +237,48 @@ function generatePages(framework: FrameworkInfo): string | null {
     const actions: string[] = [];
     if (hasServerLoad) {
       const serverContent = readFileSafe(fs.existsSync(serverLoadFile) ? serverLoadFile : serverLoadJsFile);
-      // Named actions: export const actions = { default, name1, name2 }
-      const actionsMatch = serverContent.match(/export\s+const\s+actions\s*=\s*\{([^}]*)\}/s);
-      if (actionsMatch) {
-        const body = actionsMatch[1];
-        const nameMatches = body.matchAll(/(\w+)\s*:/g);
-        for (const nm of nameMatches) {
-          if (nm[1] !== 'default') {
-            actions.push(nm[1]);
+      // Look for action definitions: each top-level property in the actions object
+      // Match lines like:   default: async () => { ... },
+      //                       contact: async () => { ... },
+      // Strategy: find the actions export, then extract top-level keys
+      const actionsExportMatch = serverContent.match(/export\s+const\s+actions\s*=\s*\{/);
+      if (actionsExportMatch) {
+        const startIdx = actionsExportMatch.index! + actionsExportMatch[0].length;
+        // Track braces to find the end of the actions object
+        let depth = 1;
+        let i = startIdx;
+        while (i < serverContent.length && depth > 0) {
+          const ch = serverContent[i];
+          if (ch === '{') depth++;
+          else if (ch === '}') depth--;
+          else if (ch === '"' || ch === "'" || ch === '`') {
+            // Skip strings
+            const q = ch;
+            i++;
+            while (i < serverContent.length && serverContent[i] !== q) {
+              if (serverContent[i] === '\\') i++;
+              i++;
+            }
           }
+          i++;
         }
-        // Check if default action exists
-        if (/default\s*:/.test(body)) {
-          actions.unshift('default');
+        const actionsBody = serverContent.substring(startIdx, i - 1);
+        // Extract top-level keys: identifier followed by : at the start of a logical segment
+        // These are the action names
+        const actionNameRegex = /(^|,|\n)\s*(\w+)\s*:/g;
+        let actionMatch: RegExpExecArray | null;
+        const names: string[] = [];
+        while ((actionMatch = actionNameRegex.exec(actionsBody)) !== null) {
+          names.push(actionMatch[2]);
+        }
+        // Reorder: default first, then others
+        if (names.includes('default')) {
+          actions.push('default');
+          for (const n of names) {
+            if (n !== 'default') actions.push(n);
+          }
+        } else {
+          actions.push(...names);
         }
       }
     }
