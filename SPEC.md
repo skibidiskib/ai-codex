@@ -120,7 +120,7 @@ src/
 | T1 | x | create `src/types.ts`: extract + extend `FrameworkAdapter`, `FrameworkInfo`, `SchemaSource`, `Config` interfaces | I.adapter,I.info,C18 |
 | T2 | x | create `src/helpers.ts`: extract `walk`, `readFileSafe`, `pad`, `shouldSkipFile`, `findDirsNamed`, `DEFAULT_SKIP_DIRS`, `ROOT`, `TODAY` | C7 |
 | T3 | x | create `src/generators/schema.ts`: extract `parsePrismaSchema`, `parseDrizzleSchema`, `generateSchema` + add `src/lib/server/db/` paths + `wrangler.jsonc` binding comment | V4,V10,V11,I.output |
-| T4 | . | create `src/generators/lib.ts`: extract `generateLib` | V4 |
+| T4 | x | create `src/generators/lib.ts`: extract `generateLib` | V4 |
 | T5 | . | create `src/adapters/nextjs.ts`: extract Next.js detection + `generateRoutes` + `generatePages` + `generateComponents` for Next.js | V5,I.filetree |
 | T6 | . | create `src/core.ts`: orchestrator — `detectFramework` loops adapters, main generation loop, CLI output formatting | V1,V2,I.adapter |
 | T7 | . | slim `src/generate-codex.ts`: CLI entry only — parse args, import core, call main | V14,C17 |
