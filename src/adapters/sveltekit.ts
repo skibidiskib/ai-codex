@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { FrameworkAdapter, FrameworkInfo } from '../types';
 import { walk, readFileSafe, pad, findDirsNamed, DEFAULT_SKIP_DIRS, ROOT, TODAY } from '../helpers';
+import { parseWranglerBindings } from '../generators/schema';
 
 // ---------------------------------------------------------------------------
 // pathToRoute — SvelteKit route path resolution (V8, V3)
@@ -66,12 +67,18 @@ function detect(root: string): FrameworkInfo | null {
     info.runtime = 'cloudflare-workers';
   }
 
-  // Also check for wrangler.toml/wrangler.jsonc as secondary signal
-  const hasWrangler = ['wrangler.jsonc', 'wrangler.toml']
-    .some((f) => fs.existsSync(path.join(root, f)));
-  if (hasWrangler) {
+  // V11: parse wrangler.jsonc/wrangler.toml for bindings (C12)
+  const wranglerFile = ['wrangler.jsonc', 'wrangler.toml']
+    .find((f) => fs.existsSync(path.join(root, f)));
+  if (wranglerFile) {
     info.runtime = 'cloudflare-workers';
+    const wranglerContent = readFileSafe(path.join(root, wranglerFile));
+    const bindings = parseWranglerBindings(wranglerContent);
+    if (Object.keys(bindings).length > 0) {
+      info.bindings = bindings;
+    }
   }
+
 
   // Detect lib dir: SvelteKit convention is src/lib (C9)
   const libCandidates = ['src/lib', 'src/lib/server', 'lib'];
