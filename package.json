@@ -8,7 +8,8 @@
   },
   "scripts": {
     "generate": "tsx src/generate-codex.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run"
   },
   "keywords": [
     "ai",
@@ -35,5 +36,8 @@
     "src/",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "devDependencies": {
+    "vitest": "^4.1.5"
+  }
 }
