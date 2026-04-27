@@ -9,6 +9,7 @@ import { walk, readFileSafe, pad, DEFAULT_SKIP_DIRS, ROOT } from './helpers';
 import { generateSchema } from './generators/schema';
 import { generateLib } from './generators/lib';
 import { nextjsAdapter } from './adapters/nextjs';
+import { sveltekitAdapter } from './adapters/sveltekit';
 
 // ---------------------------------------------------------------------------
 // Adapter registry (V2: adding framework = new file + one import line)
@@ -16,7 +17,7 @@ import { nextjsAdapter } from './adapters/nextjs';
 
 const adapters: FrameworkAdapter[] = [
   nextjsAdapter,
-  // Future: sveltekitAdapter,
+  sveltekitAdapter,
 ];
 
 // ---------------------------------------------------------------------------
