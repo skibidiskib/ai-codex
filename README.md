@@ -152,7 +152,7 @@ Add the `.ai-codex/` directory to your AI assistant's context or rules file. Mos
 
 ```bash
 # .git/hooks/pre-commit
-npx ai-codex
+npx ai-codex --quiet
 git add .ai-codex/
 ```
 
@@ -161,8 +161,8 @@ git add .ai-codex/
 ```json
 {
   "scripts": {
-    "codex": "npx ai-codex",
-    "precommit": "npx ai-codex && git add .ai-codex/"
+    "codex": "npx ai-codex --quiet",
+    "precommit": "npx ai-codex --quiet && git add .ai-codex/"
   }
 }
 ```
@@ -185,6 +185,7 @@ git add .ai-codex/
 |-----------|:------------:|---------------|
 | **Next.js (App Router)** | Yes | `app/` or `src/app/` (`api/**/route.ts`, `**/page.tsx`), `lib/`, `components/` |
 | **Next.js (Pages Router)** | Yes | `pages/` or `src/pages/` (`api/**/*.ts`, `**/*.tsx` excl. `_app`/`_document`/`_error`), `lib/`, `components/` |
+| **SvelteKit** | Yes | `src/routes/` (`+server.ts` routes, `+page.svelte` pages), `src/lib/`, components |
 | **Generic TypeScript** | Yes | `src/`, `lib/`, `utils/`, `components/` |
 
 Schema sources are auto-detected from multiple ORMs:
@@ -193,6 +194,14 @@ Schema sources are auto-detected from multiple ORMs:
 - **Drizzle** at `db/schema.ts`, `src/db/schema.ts`, `lib/db/schema.ts`, `src/lib/db/schema.ts`, `app/db/schema.ts`, `database/schema.ts`, or `drizzle/schema.ts` — including split-file layouts where `<base>/schema/` is a directory of `.ts` files
 
 Override with `--schema <path>` for either ORM (file extension determines the parser).
+
+## Supported Runtimes
+
+| Runtime | Auto-detected | What it detects |
+|----------|:------------:|-----------------|
+| **Node.js** | Yes (default) | Standard Node project |
+| **Cloudflare Workers** | Yes | `adapter-cloudflare` in Svelte config, or `wrangler.jsonc`/`wrangler.toml` — extracts D1, R2, KV bindings |
+
 
 ## What Gets Skipped
 
@@ -211,7 +220,7 @@ Override with `--schema <path>` for either ORM (file extension determines the pa
 
 ### Ideas for Contributions
 
-- Support for more frameworks (SvelteKit, Remix, Astro)
+- Support for more frameworks (Remix, Astro)
 - Support for more ORMs (Drizzle, TypeORM, Knex)
 - Watch mode (`--watch`) for continuous regeneration
 - Token count estimation in output
