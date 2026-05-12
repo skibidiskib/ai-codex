@@ -36,6 +36,8 @@
   "files": [
     "bin.js",
     "src/",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.js",
     "README.md",
     "LICENSE"
   ],
