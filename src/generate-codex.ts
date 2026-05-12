@@ -84,9 +84,12 @@ function parseArgs(): Config {
         config.quiet = true;
         break;
       case '--version':
-      case '-v':
-        console.log('ai-codex v1.2.0');
+      case '-v': {
+        const pkgPath = path.join(__dirname, '..', 'package.json');
+        const pkgVersion = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
+        console.log(`ai-codex v${pkgVersion}`);
         process.exit(0);
+      }
       case '--help':
       case '-h':
         printHelp();
