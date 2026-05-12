@@ -4,11 +4,12 @@
   "description": "Generate a compact codebase index for AI assistants -- saves 50K+ tokens per conversation",
   "main": "src/generate-codex.ts",
   "bin": {
-    "ai-codex": "src/generate-codex.ts"
+    "ai-codex": "bin.js"
   },
   "scripts": {
     "generate": "tsx src/generate-codex.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run"
   },
   "keywords": [
     "ai",
@@ -20,6 +21,7 @@
     "token-savings",
     "developer-tools",
     "nextjs",
+    "sveltekit",
     "typescript"
   ],
   "author": "",
@@ -32,8 +34,15 @@
     "node": ">=18"
   },
   "files": [
+    "bin.js",
     "src/",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.js",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "vitest": "^4.1.5"
+  }
 }

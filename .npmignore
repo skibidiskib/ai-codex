@@ -1,0 +1,6 @@
+**/*.test.ts
+**/*.test.js
+src/**/*.test.ts
+src/**/*.test.js
+tests
+tests/

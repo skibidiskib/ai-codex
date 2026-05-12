@@ -1,0 +1,9 @@
+{
+  "name": "test-sveltekit-app",
+  "d1_databases": [
+    { "binding": "DB", "database_name": "prod-db", "database_id": "abc123" }
+  ],
+  "r2_buckets": [
+    { "binding": "ASSETS", "bucket_name": "assets" }
+  ]
+}
