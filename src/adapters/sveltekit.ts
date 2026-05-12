@@ -21,6 +21,8 @@ function pathToRoute(filePath: string, base: string): string {
   rel = rel.replace(/\([\w-]+\)\/?/g, '');
   // [...rest] → :* (V8)
   rel = rel.replace(/\[\.\.\.(\w+)\]/g, ':*');
+  // [[optional]] → :optional (V8) — must precede [param] replace
+  rel = rel.replace(/\[\[([^\]]+)\]\]/g, ':$1');
   // [param] → :param (V8)
   rel = rel.replace(/\[([^\]]+)\]/g, ':$1');
   rel = '/' + rel.replace(/\\/g, '/');
