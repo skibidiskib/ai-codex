@@ -1,6 +1,6 @@
 {
   "name": "ai-codex",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Generate a compact codebase index for AI assistants -- saves 50K+ tokens per conversation",
   "main": "src/generate-codex.ts",
   "bin": {
