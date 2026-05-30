@@ -191,7 +191,7 @@ git add .ai-codex/
 Schema sources are auto-detected from multiple ORMs:
 
 - **Prisma** at `prisma/schema.prisma` (or nested under `prisma/schema/`)
-- **Drizzle** at `db/schema.ts`, `src/db/schema.ts`, `lib/db/schema.ts`, `src/lib/db/schema.ts`, `app/db/schema.ts`, `database/schema.ts`, or `drizzle/schema.ts` — including split-file layouts where `<base>/schema/` is a directory of `.ts` files
+- **Drizzle** at `db/schema.ts`, `src/db/schema.ts`, `lib/db/schema.ts`, `src/lib/db/schema.ts`, `app/db/schema.ts`, `src/app/db/schema.ts`, `database/schema.ts`, `drizzle/schema.ts`, or `src/lib/server/db/schema.ts` (SvelteKit convention) — including split-file layouts where `<base>/schema/` is a directory of `.ts` files
 
 Override with `--schema <path>` for either ORM (file extension determines the parser).
 
@@ -200,13 +200,13 @@ Override with `--schema <path>` for either ORM (file extension determines the pa
 | Runtime | Auto-detected | What it detects |
 |----------|:------------:|-----------------|
 | **Node.js** | Yes (default) | Standard Node project |
-| **Cloudflare Workers** | Yes | `adapter-cloudflare` in Svelte config, or `wrangler.jsonc`/`wrangler.toml` — extracts D1, R2, KV bindings |
+| **Cloudflare Workers** | Yes (SvelteKit) | `adapter-cloudflare` in `svelte.config.js`, or `wrangler.jsonc`/`wrangler.toml` — extracts D1, R2, KV bindings. Next.js projects are always reported as Node.js. |
 
 
 ## What Gets Skipped
 
-- `node_modules/`, `.next/`, `dist/`, `build/`, `.git/`
-- `.d.ts` declaration files, `.map` source maps, `.min.js` minified files
+- `node_modules/`, `.next/`, `dist/`, `build/`, `.git/`, `.worktrees/`, `__pycache__/`, `.turbo/`, `.cache/`, `coverage/`, `.nyc_output/`, `.parcel-cache/`, and ai-codex's own output (`.ai-codex/`, `.claude/`)
+- `.d.ts` declaration files, `.map` source maps, `.min.js` / `.min.css` minified files
 - Backup files (`*.backup.*`, `*-backup-*`)
 - shadcn/radix UI primitives (button, dialog, etc.) in `components/ui/`
 
@@ -221,7 +221,7 @@ Override with `--schema <path>` for either ORM (file extension determines the pa
 ### Ideas for Contributions
 
 - Support for more frameworks (Remix, Astro)
-- Support for more ORMs (Drizzle, TypeORM, Knex)
+- Support for more ORMs (TypeORM, Knex)
 - Watch mode (`--watch`) for continuous regeneration
 - Token count estimation in output
 - Support for Python projects (FastAPI, Django)

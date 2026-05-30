@@ -48,8 +48,9 @@ function parseArgs(): Config {
     try {
       const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       if (fileConfig.output) config.output = fileConfig.output;
-      if (fileConfig.include) config.include = fileConfig.include;
-      if (fileConfig.exclude) config.exclude = fileConfig.exclude;
+      // CLI --include/--exclude override (replace) config values, per README.
+      if (fileConfig.include && !args.includes('--include')) config.include = fileConfig.include;
+      if (fileConfig.exclude && !args.includes('--exclude')) config.exclude = fileConfig.exclude;
       if (fileConfig.schema) config.schema = fileConfig.schema;
       if (fileConfig.quiet) config.quiet = fileConfig.quiet;
     } catch {
@@ -111,7 +112,7 @@ Options:
   --output, -o <dir>    Output directory (default: .ai-codex)
   --include <dirs...>   Directories to scan (default: auto-detect)
   --exclude <dirs...>   Directories to skip
-  --schema <path>       Path to Prisma schema file (auto-detected)
+  --schema <path>       Path to Prisma or Drizzle schema file (auto-detected)
   --quiet, -q           Suppress output (for hooks/CI)
   --version, -v         Show version
   --help, -h            Show this help

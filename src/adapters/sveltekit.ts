@@ -19,10 +19,10 @@ function pathToRoute(filePath: string, base: string): string {
   rel = path.dirname(rel);
   // Strip route groups: (name) → removed (V8)
   rel = rel.replace(/\([\w-]+\)\/?/g, '');
+  // [[optional]] → :optional (V8) — must precede [...rest] and [param] replaces
+  rel = rel.replace(/\[\[(?:\.\.\.)?([^\]]+)\]\]/g, ':$1');
   // [...rest] → :* (V8)
   rel = rel.replace(/\[\.\.\.(\w+)\]/g, ':*');
-  // [[optional]] → :optional (V8) — must precede [param] replace
-  rel = rel.replace(/\[\[([^\]]+)\]\]/g, ':$1');
   // [param] → :param (V8)
   rel = rel.replace(/\[([^\]]+)\]/g, ':$1');
   rel = '/' + rel.replace(/\\/g, '/');
@@ -126,7 +126,7 @@ function generateRoutes(framework: FrameworkInfo): string | null {
 
   const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'];
   const METHOD_REGEX = new Map<string, RegExp>(
-    HTTP_METHODS.map((m) => [m, new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b|export\\s+const\\s+${m}\\s*(?::\\s*\\w+)?\\s*=`)])
+    HTTP_METHODS.map((m) => [m, new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b|export\\s+const\\s+${m}\\s*(?::\\s*[^=\\n]+)?\\s*=`)])
   );
 
   interface RouteInfo {
@@ -345,13 +345,13 @@ function generateComponents(framework: FrameworkInfo): string | null {
       // Svelte 5 runes: let { a, b, c } = $props() (C11)
       const runesMatch = content.match(/let\s*\{\s*([^}]+)\}\s*=\s*\$props\(/);
       if (runesMatch) {
-        const destructured = runesMatch[1];
-        // Extract identifiers, stripping defaults and types
-        const ids = destructured.matchAll(/(\w+)\s*(?:=|:|,|\}|$)/g);
+        // Split on comma and take the first identifier per field, so defaults
+        // (count = 0) and rename aliases (x: alias) don't leak into props.
         let count = 0;
-        for (const id of ids) {
+        for (const field of runesMatch[1].split(',')) {
           if (count >= 5) break;
-          if (id[1] && !['function', 'const', 'let', 'var'].includes(id[1])) {
+          const id = field.trim().replace(/^\.\.\./, '').match(/^(\w+)/);
+          if (id && !['function', 'const', 'let', 'var'].includes(id[1])) {
             props.push(id[1]);
             count++;
           }

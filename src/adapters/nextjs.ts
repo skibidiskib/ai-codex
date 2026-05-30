@@ -24,9 +24,9 @@ function pathToRoute(filePath: string, base: string, routerType: 'app' | 'pages'
   }
   // Strip Next.js route groups: (name)
   rel = rel.replace(/\([\w-]+\)\/?/g, '');
-  // Convert [[...param]] optional catch-all, then [param] to :param
-  rel = rel.replace(/\[\[([^\]]+)\]\]/g, ':$1');
-  rel = rel.replace(/\[([^\]]+)\]/g, ':$1');
+  // Convert [[...param]] optional catch-all, then [param] to :param (strip ... spread dots)
+  rel = rel.replace(/\[\[(?:\.\.\.)?([^\]]+)\]\]/g, ':$1');
+  rel = rel.replace(/\[(?:\.\.\.)?([^\]]+)\]/g, ':$1');
   rel = '/' + rel.replace(/\\/g, '/');
   if (rel === '/.') rel = '/';
   if (rel.length > 1 && rel.endsWith('/')) rel = rel.slice(0, -1);
@@ -151,7 +151,7 @@ function generateRoutes(framework: FrameworkInfo): string | null {
 
   const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
   const HTTP_METHOD_REGEXES = new Map<string, RegExp>(
-    HTTP_METHODS.map((m) => [m, new RegExp(`export\\s+(async\\s+)?function\\s+${m}\\b`)])
+    HTTP_METHODS.map((m) => [m, new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b|export\\s+const\\s+${m}\\s*(?::\\s*[^=\\n]+)?\\s*=`)])
   );
   // Pages Router: handlers branch on req.method, not on export name.
   const PAGES_METHOD_REGEXES = new Map<string, RegExp>(
